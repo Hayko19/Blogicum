@@ -18,3 +18,6 @@ class PostManager(models.Manager):
 
     def available(self):
         return self.get_queryset().available()
+
+    def with_comment_count(self):
+        return self.get_queryset().with_comment_count()

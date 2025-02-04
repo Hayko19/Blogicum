@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils.timezone import now
+from django.db.models import Count
 
 
 class PostQuerySet(models.QuerySet):
@@ -14,3 +15,6 @@ class PostQuerySet(models.QuerySet):
 
     def available(self):
         return self.category_published().published().published_up_to_now()
+
+    def with_comment_count(self):
+        return self.annotate(comment_count=Count('comments'))

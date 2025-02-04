@@ -6,14 +6,28 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.views.generic import CreateView, DeleteView, ListView, UpdateView
+from django.utils import timezone
 
 from blog.models import Category, Comment, Post
 
 from .forms import CommentForm, PostForm
+from .constants import POSTS_PER_PAGE
+
+
+def get_post_or_404(id):
+    return get_object_or_404(
+        Post.objects.select_related('author', 'category'),
+        id=id
+    )
+
+
+def paginate_queryset(queryset, request):
+    paginator = Paginator(queryset, POSTS_PER_PAGE)
+    page_number = request.GET.get('page')
+    return paginator.get_page(page_number)
 
 
 class OnlyAuthorMixin(UserPassesTestMixin):
-
     def test_func(self):
         object = self.get_object()
         return (
@@ -27,10 +41,7 @@ class OnlyAuthorMixin(UserPassesTestMixin):
 
 def index(request):
     post_list = Post.objects.available()
-    paginator = Paginator(post_list, 10)
-    page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
-
+    page_obj = paginate_queryset(post_list, request)
     for post in page_obj.object_list:
         post.comment_count = post.comments.count()
 
@@ -41,11 +52,9 @@ def index(request):
 
 
 def post_detail(request, id):
-    post = get_object_or_404(Post, id=id)
-
+    post = get_post_or_404(id)
     if not post.is_published and post.author != request.user:
         raise Http404
-
     comments = post.comments.all()
     form = CommentForm()
     if request.method == 'POST':
@@ -66,17 +75,14 @@ def post_detail(request, id):
 
 
 def category_posts(request, category_slug):
-
     category = get_object_or_404(
         Category, slug=category_slug, is_published=True
     )
-
-    post_list = Post.objects.available().filter(
-        category=category,
+    post_list = category.posts.filter(
+        is_published=True,
+        pub_date__lte=timezone.now()
     )
-    paginator = Paginator(post_list, 10)
-    page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
+    page_obj = paginate_queryset(post_list, request)
     context = {
         'category': category,
         'page_obj': page_obj,
@@ -84,33 +90,24 @@ def category_posts(request, category_slug):
     return render(request, 'blog/category.html', context)
 
 
-class PostCreateView(LoginRequiredMixin, CreateView):
-    model = Post
-    form_class = PostForm
-
-    def form_valid(self, form):
-        form.instance.author = self.request.user
-        return super().form_valid(form)
-
-
 class UserProfileView(ListView):
     model = Post
     template_name = 'blog/profile.html'
     context_object_name = 'posts'
-    paginate_by = 10
+    paginate_by = POSTS_PER_PAGE
+
+    def get_user(self):
+        return get_object_or_404(User, username=self.kwargs['username'])
 
     def get_queryset(self):
-        return Post.objects.filter(author__username=self.kwargs['username'])
+        user = self.get_user()
+        return user.posts.with_comment_count().select_related(
+            'author'
+        ).prefetch_related('comments').order_by('-pub_date')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['profile'] = get_object_or_404(
-            User,
-            username=self.kwargs['username']
-        )
-        for post in context['posts']:
-            post.comment_count = post.comments.count()
-
+        context['profile'] = self.get_user()
         return context
 
 
@@ -139,7 +136,7 @@ class PostCreateView(LoginRequiredMixin, CreateView):
         return super().form_valid(form)
 
     def get_success_url(self):
-        return reverse_lazy(
+        return reverse(
             'blog:profile',
             kwargs={'username': self.request.user.username}
         )
@@ -177,7 +174,7 @@ class PostDeleteView(
 
 @login_required
 def add_comment(request, id):
-    post = get_object_or_404(Post, id=id)
+    post = get_post_or_404(id)
     form = CommentForm(request.POST)
     if form.is_valid():
         comment = form.save(commit=False)
