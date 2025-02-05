@@ -1,17 +1,16 @@
+from blog.models import Category, Comment, Post
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.contrib.auth.models import User
 from django.core.paginator import Paginator
+from django.db.models import Count
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.views.generic import CreateView, DeleteView, ListView, UpdateView
-from django.utils import timezone
 
-from blog.models import Category, Comment, Post
-
-from .forms import CommentForm, PostForm
 from .constants import POSTS_PER_PAGE
+from .forms import CommentForm, PostForm
 
 
 def get_post_or_404(id):
@@ -78,10 +77,7 @@ def category_posts(request, category_slug):
     category = get_object_or_404(
         Category, slug=category_slug, is_published=True
     )
-    post_list = category.posts.filter(
-        is_published=True,
-        pub_date__lte=timezone.now()
-    )
+    post_list = Post.objects.available().filter(category=category)
     page_obj = paginate_queryset(post_list, request)
     context = {
         'category': category,
@@ -101,9 +97,12 @@ class UserProfileView(ListView):
 
     def get_queryset(self):
         user = self.get_user()
-        return user.posts.with_comment_count().select_related(
-            'author'
-        ).prefetch_related('comments').order_by('-pub_date')
+        return (
+            user.posts
+            .annotate(comment_count=Count('comments'))
+            .select_related('author', 'category')
+            .order_by('-pub_date')
+        )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

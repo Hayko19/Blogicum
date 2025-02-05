@@ -1,8 +1,7 @@
-from django.contrib.auth import get_user_model
-from django.db import models
-
 from blog.managers import PostManager
 from core.models import PublishedModel, TimestampedModel
+from django.contrib.auth import get_user_model
+from django.db import models
 
 from .constants import MAX_LENGTH
 

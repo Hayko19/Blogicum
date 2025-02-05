@@ -1,6 +1,6 @@
 from django.db import models
-from django.utils.timezone import now
 from django.db.models import Count
+from django.utils.timezone import now
 
 
 class PostQuerySet(models.QuerySet):
