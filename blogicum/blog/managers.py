@@ -1,5 +1,6 @@
-from blog.querysets import PostQuerySet
 from django.db import models
+
+from blog.querysets import PostQuerySet
 
 
 class PostManager(models.Manager):
